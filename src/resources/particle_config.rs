@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use rand::Rng;
+use crate::globals::*;
 
 #[derive(Resource)]
 pub struct ParticleConfig {
@@ -13,14 +14,14 @@ pub struct ParticleConfig {
 
 impl Default for ParticleConfig {
     fn default() -> Self {
-        let num_types = 6u32;
+        let num_types = DEFAULT_PARTICLE_TYPES as u32;
         let mut config = Self {
-            num_particles: 1600, // 8 simulations * 200 particules
-            world_size: 50.0,
+            num_particles: DEFAULT_PARTICLE_COUNT as u32,
+            world_size: DEFAULT_WORLD_SIZE,
             num_types,
-            particle_size: 0.3,
+            particle_size: DEFAULT_PARTICLE_SIZE,
             force_matrix: vec![0.0; (num_types * num_types) as usize],
-            update_timer: Timer::from_seconds(1.0 / 120.0, TimerMode::Repeating),
+            update_timer: Timer::from_seconds(PHYSICS_TIMESTEP, TimerMode::Repeating),
         };
 
         config.generate_random_forces();
@@ -33,13 +34,15 @@ impl ParticleConfig {
     pub fn generate_random_forces(&mut self) {
         let mut rng = rand::rng();
 
-        // Remplit la matrice avec des valeurs entre -2.0 et 2.0
+        // Remplit la matrice avec des valeurs équilibrées
         for i in 0..self.num_types {
             for j in 0..self.num_types {
                 let force = if i == j {
-                    rng.random::<f32>() * -8.0 - 1.0
+                    // Auto-répulsion pour éviter l'agglomération
+                    rng.random::<f32>() * -1.0 - 0.5 // Entre -1.5 et -0.5
                 } else {
-                    rng.random::<f32>() * 13.0 - 4.0
+                    // Forces variées entre types différents (équilibrées)
+                    rng.random::<f32>() * 4.0 - 2.0 // Entre -2.0 et 2.0
                 };
 
                 let index = (i * self.num_types + j) as usize;
@@ -47,61 +50,7 @@ impl ParticleConfig {
             }
         }
 
-        println!("Generated force matrix:");
-        for i in 0..self.num_types {
-            for j in 0..self.num_types {
-                let force = self.get_force(i, j);
-                print!("{:6.2} ", force);
-            }
-            println!();
-        }
-    }
-
-    /// Définit des forces d'interaction prédéfinies intéressantes
-    pub fn set_interesting_forces(&mut self) {
-        // Efface la matrice
-        self.force_matrix.fill(0.0);
-
-        match self.num_types {
-            3 => {
-                // Configuration rock-paper-scissors
-                self.set_force(0, 1, 1.0);   // Rouge attire Vert
-                self.set_force(1, 2, 1.0);   // Vert attire Bleu
-                self.set_force(2, 0, 1.0);   // Bleu attire Rouge
-                self.set_force(1, 0, -0.5);  // Vert repousse Rouge
-                self.set_force(2, 1, -0.5);  // Bleu repousse Vert
-                self.set_force(0, 2, -0.5);  // Rouge repousse Bleu
-
-                // Auto-répulsion légère
-                self.set_force(0, 0, -0.3);
-                self.set_force(1, 1, -0.3);
-                self.set_force(2, 2, -0.3);
-            },
-            4 => {
-                // Configuration plus complexe
-                self.set_force(0, 1, 1.5);   // Rouge attire fort Vert
-                self.set_force(1, 2, 0.8);   // Vert attire Bleu
-                self.set_force(2, 3, 1.2);   // Bleu attire fort Jaune
-                self.set_force(3, 0, 0.6);   // Jaune attire Rouge
-
-                // Répulsions croisées
-                self.set_force(0, 2, -1.0);  // Rouge repousse Bleu
-                self.set_force(1, 3, -0.8);  // Vert repousse Jaune
-                self.set_force(2, 0, -0.6);  // Bleu repousse Rouge
-                self.set_force(3, 1, -1.2);  // Jaune repousse fort Vert
-
-                // Auto-répulsion
-                for i in 0..4 {
-                    self.set_force(i, i, -0.4);
-                }
-            },
-            _ => {
-                // Configuration générique aléatoire
-                self.generate_random_forces();
-            }
-        }
-
-        println!("Set interesting forces:");
+        println!("Generated balanced force matrix:");
         self.print_force_matrix();
     }
 
@@ -128,5 +77,53 @@ impl ParticleConfig {
             }
             println!();
         }
+    }
+
+    /// Configure des forces intéressantes prédéfinies
+    pub fn set_interesting_forces(&mut self) {
+        self.force_matrix.fill(0.0);
+
+        match self.num_types {
+            3 => {
+                // Configuration rock-paper-scissors
+                self.set_force(0, 1, 1.0);   // Rouge attire Vert
+                self.set_force(1, 2, 1.0);   // Vert attire Bleu
+                self.set_force(2, 0, 1.0);   // Bleu attire Rouge
+                self.set_force(1, 0, -0.5);  // Vert repousse Rouge
+                self.set_force(2, 1, -0.5);  // Bleu repousse Vert
+                self.set_force(0, 2, -0.5);  // Rouge repousse Bleu
+
+                // Auto-répulsion légère
+                for i in 0..3 {
+                    self.set_force(i, i, -0.3);
+                }
+            },
+            6 => {
+                // Configuration plus complexe pour 6 types
+                // Créer des cycles d'attraction et de répulsion
+                for i in 0..6 {
+                    let next = (i + 1) % 6;
+                    let prev = (i + 5) % 6;
+
+                    self.set_force(i, next, 1.2);      // Attire le suivant
+                    self.set_force(i, prev, -0.8);     // Repousse le précédent
+                    self.set_force(i, i, -0.4);        // Auto-répulsion
+
+                    // Forces moyennes avec les autres
+                    for j in 0..6 {
+                        if j != i && j != next && j != prev {
+                            self.set_force(i, j, (rand::rng().random::<f32>() - 0.5) * 0.6);
+                        }
+                    }
+                }
+            },
+            _ => {
+                // Configuration générique aléatoire
+                self.generate_random_forces();
+            }
+        }
+
+        println!("Set interesting forces:");
+        self.print_force_matrix();
     }
 }

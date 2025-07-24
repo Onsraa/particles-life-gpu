@@ -5,7 +5,7 @@ use rand::Rng;
 
 use crate::components::particle::*;
 use crate::resources::{particle_config::*, simulation_config::*};
-use crate::states::game_state::*;
+use crate::states::app_state::AppState;
 use crate::systems::{simulation_system::*, food_system::*, viewport_system::*};
 
 pub struct ParticleLifePlugin;
@@ -14,23 +14,22 @@ impl Plugin for ParticleLifePlugin {
     fn build(&self, app: &mut App) {
         app
             .init_resource::<ParticleConfig>()
-            .init_resource::<SimulationConfig>()
-            .init_resource::<ParticleTypes>()
             .add_plugins(AppComputeWorkerPlugin::<ParticleComputeWorker>::default())
-            .add_systems(OnEnter(GameState::Loading), (
-                setup_simulations,
+            .add_systems(OnEnter(AppState::Simulation), (
+                setup_simulations_from_config,
                 setup_viewports,
                 setup_lighting,
-                finished_loading,
             ))
+            .add_systems(Update,
+                         initialize_gpu_data.run_if(in_state(AppState::Simulation))
+            )
             .add_systems(Update, (
                 update_particle_simulation,
                 update_particle_visualization.after(update_particle_simulation),
                 handle_food_interactions,
                 display_scores,
                 update_viewports_on_resize,
-                handle_input,
-            ).run_if(in_state(GameState::Running)));
+            ).run_if(in_state(AppState::Simulation)));
     }
 }
 
@@ -48,43 +47,36 @@ pub struct ParticleComputeWorker;
 
 impl ComputeWorker for ParticleComputeWorker {
     fn build(world: &mut World) -> AppComputeWorker<Self> {
-        let config = world.resource::<ParticleConfig>();
-        let sim_config = world.resource::<SimulationConfig>();
-        let particle_types = world.resource::<ParticleTypes>();
+        // Utiliser la configuration du menu si disponible
+        let (num_particles, world_size, num_types, force_matrix) = if let Some(sim_config) = world.get_resource::<SimulationConfig>() {
+            (
+                sim_config.particle_count as u32,
+                sim_config.world_size,
+                sim_config.particle_types as u32,
+                generate_random_force_matrix(sim_config.particle_types),
+            )
+        } else {
+            // Valeurs par défaut
+            (
+                crate::globals::DEFAULT_PARTICLE_COUNT as u32,
+                crate::globals::DEFAULT_WORLD_SIZE,
+                crate::globals::DEFAULT_PARTICLE_TYPES as u32,
+                generate_random_force_matrix(crate::globals::DEFAULT_PARTICLE_TYPES),
+            )
+        };
 
-        let num_particles = config.num_particles;
-        let world_size = config.world_size;
-        let num_types = config.num_types;
-        let force_matrix = config.force_matrix.clone();
-
-        // Générer les données initiales directement ici
-        let mut rng = rand::rng();
-        let mut positions = Vec::new();
-        let mut velocities = Vec::new();
-
-        for i in 0..num_particles {
-            let x = rng.random::<f32>() * world_size - world_size * 0.5;
-            let y = rng.random::<f32>() * world_size - world_size * 0.5;
-            let z = rng.random::<f32>() * world_size - world_size * 0.5;
-            let particle_type = (i % num_types) as f32;
-
-            positions.push([x, y, z, particle_type]);
-
-            let vx = (rng.random::<f32>() - 0.5) * 2.0;
-            let vy = (rng.random::<f32>() - 0.5) * 2.0;
-            let vz = (rng.random::<f32>() - 0.5) * 2.0;
-            velocities.push([vx, vy, vz, 0.0]);
-        }
+        let positions = vec![[0.0f32; 4]; num_particles as usize];
+        let velocities = vec![[0.0f32; 4]; num_particles as usize];
 
         println!("Initializing {} particles with {} types", num_particles, num_types);
 
         AppComputeWorkerBuilder::new(world)
             .add_uniform("num_particles", &num_particles)
-            .add_uniform("dt", &(1.0f32 / 60.0))
+            .add_uniform("dt", &(crate::globals::PHYSICS_TIMESTEP))
             .add_uniform("world_size", &world_size)
             .add_uniform("num_types", &num_types)
-            .add_staging("positions", &positions)  // Données réelles
-            .add_staging("velocities", &velocities)  // Données réelles
+            .add_staging("positions", &positions)
+            .add_staging("velocities", &velocities)
             .add_staging("new_positions", &positions)
             .add_staging("new_velocities", &velocities)
             .add_staging("force_matrix", &force_matrix)
@@ -99,25 +91,47 @@ impl ComputeWorker for ParticleComputeWorker {
     }
 }
 
+fn generate_random_force_matrix(num_types: usize) -> Vec<f32> {
+    let mut rng = rand::rng();
+    let matrix_size = num_types * num_types;
+
+    (0..matrix_size)
+        .map(|i| {
+            let type_a = i / num_types;
+            let type_b = i % num_types;
+
+            if type_a == type_b {
+                // Auto-répulsion pour éviter l'agglomération
+                rng.random_range(-1.0..=-0.1)
+            } else {
+                // Forces variées entre types différents
+                rng.random_range(-2.0..=2.0)
+            }
+        })
+        .collect()
+}
+
+// Reste du code identique...
 fn update_particle_simulation(
     mut compute_worker: ResMut<AppComputeWorker<ParticleComputeWorker>>,
-    mut config: ResMut<ParticleConfig>,
     time: Res<Time>,
+    mut timer: Local<Timer>,
 ) {
-    config.update_timer.tick(time.delta());
+    if timer.duration().is_zero() {
+        *timer = Timer::from_seconds(crate::globals::PHYSICS_TIMESTEP, TimerMode::Repeating);
+    }
 
-    if !config.update_timer.just_finished() {
+    timer.tick(time.delta());
+
+    if !timer.just_finished() {
         return;
     }
 
     if !compute_worker.ready() {
-        println!("⚠️ Compute worker not ready!");
         return;
     }
 
-    println!("🚀 Executing compute shader...");
     compute_worker.execute();
-    println!("✅ Compute shader executed");
 }
 
 fn update_particle_visualization(
@@ -130,21 +144,11 @@ fn update_particle_visualization(
 
     let positions: Vec<[f32; 4]> = compute_worker.read_vec("positions");
 
-    println!("📖 Reading {} positions from GPU", positions.len());
-
-    let mut updated_count = 0;
     for (particle, mut transform) in query.iter_mut() {
         if let Some(pos) = positions.get(particle.index as usize) {
             let new_pos = Vec3::new(pos[0], pos[1], pos[2]);
-            if transform.translation.distance(new_pos) > 0.01 {
-                updated_count += 1;
-            }
             transform.translation = new_pos;
         }
-    }
-
-    if updated_count > 0 {
-        println!("🔄 Updated {} particle positions", updated_count);
     }
 }
 
@@ -163,17 +167,4 @@ fn setup_lighting(mut commands: Commands) {
         brightness: 300.0,
         affects_lightmapped_meshes: false,
     });
-}
-
-fn handle_input(
-    keyboard_input: Res<ButtonInput<KeyCode>>,
-    current_state: Res<State<GameState>>,
-    mut next_state: ResMut<NextState<GameState>>,
-) {
-    if keyboard_input.just_pressed(KeyCode::Space) {
-        next_state.set(match current_state.get() {
-            GameState::Paused => GameState::Running,
-            _ => GameState::Paused,
-        });
-    }
 }
