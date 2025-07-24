@@ -22,11 +22,11 @@
 @group(0) @binding(8) var<storage, read> force_matrix: array<f32>;
 
 // Constantes physiques
-const MAX_FORCE: f32 = 100.0;
+const MAX_FORCE: f32 = 1000000.0;
 const MIN_DISTANCE: f32 = 0.5;
-const MAX_DISTANCE: f32 = 10.0;
-const FRICTION: f32 = 0.95;
-const MAX_VELOCITY: f32 = 5.0;
+const MAX_DISTANCE: f32 = 50.0;
+const FRICTION: f32 = 0.98;
+const MAX_VELOCITY: f32 = 10000.0;
 
 // Fonction pour obtenir la force entre deux types de particules
 fn get_force_between_types(type_a: u32, type_b: u32) -> f32 {
@@ -77,18 +77,16 @@ fn apply_world_bounds(pos: vec3<f32>, vel: vec3<f32>) -> vec3<f32> {
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let particle_index = global_id.x;
 
-    // Vérification des limites
     if (particle_index >= num_particles) {
         return;
     }
 
-    // Récupère les données de la particule courante
     let current_pos = positions[particle_index].xyz;
     let current_type = u32(positions[particle_index].w);
     let current_vel = velocities[particle_index].xyz;
 
-    // Calcule la force totale appliquée à cette particule
     var total_force = vec3<f32>(0.0, 0.0, 0.0);
+    var interaction_count = 0u;
 
     // Parcourt toutes les autres particules
     for (var i: u32 = 0u; i < num_particles; i++) {
@@ -98,14 +96,21 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
         let other_pos = positions[i].xyz;
         let other_type = u32(positions[i].w);
+        let distance = length(other_pos - current_pos);
 
-        // Calcule et accumule la force
-        let force = calculate_force(current_pos, other_pos, current_type, other_type);
-        total_force += force;
+        // Compte les interactions dans la portée
+        if (distance >= MIN_DISTANCE && distance <= MAX_DISTANCE) {
+            interaction_count++;
+            let force = calculate_force(current_pos, other_pos, current_type, other_type);
+            total_force += force;
+        }
     }
 
-    // Applique la physique : F = ma, donc a = F/m (on suppose m = 1)
-    var new_vel = current_vel + total_force * dt;
+    // Appliquer la physique seulement si il y a des forces
+    var new_vel = current_vel;
+    if (length(total_force) > 0.01) {
+        new_vel = current_vel + total_force * dt;
+    }
 
     // Applique la friction
     new_vel *= FRICTION;

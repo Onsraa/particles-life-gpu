@@ -1,50 +1,10 @@
 use bevy::prelude::*;
 use bevy::render::view::{Layer, RenderLayers};
-use bevy_app_compute::prelude::*;
 use rand::Rng;
 
 use crate::components::{particle::*, food::*, simulation::*};
-use crate::plugins::particle_life_plugin::ParticleComputeWorker;
 use crate::resources::{particle_config::*, simulation_config::*};
 use crate::states::game_state::GameState;
-
-pub fn initialize_gpu_data(
-    mut compute_worker: ResMut<AppComputeWorker<ParticleComputeWorker>>,
-    particles: Query<(&Transform, &LifeParticle)>,
-    mut next_state: ResMut<NextState<GameState>>,
-    mut initialized: Local<bool>,
-    config: Res<ParticleConfig>,
-) {
-    if *initialized || !compute_worker.ready() {
-        return;
-    }
-
-    let particle_count = particles.iter().count();
-    println!("Found {} particles, expected {}", particle_count, config.num_particles);
-
-    if particle_count != config.num_particles as usize {
-        println!("❌ Particle count mismatch! Adjusting...");
-    }
-
-    let mut positions = Vec::new();
-    let mut velocities = Vec::new();
-
-    // Limiter au nombre attendu
-    for (transform, particle) in particles.iter().take(config.num_particles as usize) {
-        let pos = transform.translation;
-        positions.push([pos.x, pos.y, pos.z, particle.particle_type as f32]);
-        velocities.push([0.0, 0.0, 0.0, 0.0]);
-    }
-
-    println!("💾 Writing {} particles to GPU", positions.len());
-
-    compute_worker.write_slice("positions", &positions);
-    compute_worker.write_slice("velocities", &velocities);
-
-    *initialized = true;
-    next_state.set(GameState::Running);
-    println!("✅ GPU initialized");
-}
 
 pub fn setup_simulations(
     mut commands: Commands,

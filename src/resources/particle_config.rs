@@ -20,7 +20,7 @@ impl Default for ParticleConfig {
             num_types,
             particle_size: 0.3,
             force_matrix: vec![0.0; (num_types * num_types) as usize],
-            update_timer: Timer::from_seconds(1.0 / 60.0, TimerMode::Repeating),
+            update_timer: Timer::from_seconds(1.0 / 120.0, TimerMode::Repeating),
         };
 
         config.generate_random_forces();
@@ -37,11 +37,9 @@ impl ParticleConfig {
         for i in 0..self.num_types {
             for j in 0..self.num_types {
                 let force = if i == j {
-                    // Auto-répulsion pour éviter l'agglomération
-                    rng.random::<f32>() * -1.0 - 0.5 // Entre -1.5 et -0.5
+                    rng.random::<f32>() * -8.0 - 1.0
                 } else {
-                    // Forces variées entre types différents
-                    rng.random::<f32>() * 4.0 - 2.0 // Entre -2.0 et 2.0
+                    rng.random::<f32>() * 13.0 - 4.0
                 };
 
                 let index = (i * self.num_types + j) as usize;

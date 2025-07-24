@@ -21,10 +21,8 @@ impl Plugin for ParticleLifePlugin {
                 setup_simulations,
                 setup_viewports,
                 setup_lighting,
+                finished_loading,
             ))
-            .add_systems(Update,
-                         initialize_gpu_data.run_if(in_state(GameState::Loading))
-            )
             .add_systems(Update, (
                 update_particle_simulation,
                 update_particle_visualization.after(update_particle_simulation),
@@ -51,14 +49,32 @@ pub struct ParticleComputeWorker;
 impl ComputeWorker for ParticleComputeWorker {
     fn build(world: &mut World) -> AppComputeWorker<Self> {
         let config = world.resource::<ParticleConfig>();
+        let sim_config = world.resource::<SimulationConfig>();
+        let particle_types = world.resource::<ParticleTypes>();
+
         let num_particles = config.num_particles;
         let world_size = config.world_size;
         let num_types = config.num_types;
         let force_matrix = config.force_matrix.clone();
 
-        // Buffers vides, remplis par setup_simulations
-        let positions = vec![[0.0f32; 4]; num_particles as usize];
-        let velocities = vec![[0.0f32; 4]; num_particles as usize];
+        // Générer les données initiales directement ici
+        let mut rng = rand::rng();
+        let mut positions = Vec::new();
+        let mut velocities = Vec::new();
+
+        for i in 0..num_particles {
+            let x = rng.random::<f32>() * world_size - world_size * 0.5;
+            let y = rng.random::<f32>() * world_size - world_size * 0.5;
+            let z = rng.random::<f32>() * world_size - world_size * 0.5;
+            let particle_type = (i % num_types) as f32;
+
+            positions.push([x, y, z, particle_type]);
+
+            let vx = (rng.random::<f32>() - 0.5) * 2.0;
+            let vy = (rng.random::<f32>() - 0.5) * 2.0;
+            let vz = (rng.random::<f32>() - 0.5) * 2.0;
+            velocities.push([vx, vy, vz, 0.0]);
+        }
 
         println!("Initializing {} particles with {} types", num_particles, num_types);
 
@@ -67,8 +83,8 @@ impl ComputeWorker for ParticleComputeWorker {
             .add_uniform("dt", &(1.0f32 / 60.0))
             .add_uniform("world_size", &world_size)
             .add_uniform("num_types", &num_types)
-            .add_staging("positions", &positions)
-            .add_staging("velocities", &velocities)
+            .add_staging("positions", &positions)  // Données réelles
+            .add_staging("velocities", &velocities)  // Données réelles
             .add_staging("new_positions", &positions)
             .add_staging("new_velocities", &velocities)
             .add_staging("force_matrix", &force_matrix)
