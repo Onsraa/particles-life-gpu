@@ -17,12 +17,13 @@ impl Plugin for ParticleLifePlugin {
             .init_resource::<SimulationConfig>()
             .init_resource::<ParticleTypes>()
             .add_plugins(AppComputeWorkerPlugin::<ParticleComputeWorker>::default())
-            .add_systems(OnEnter(GameState::Loading),
-                (initialize_gpu_data,
+            .add_systems(OnEnter(GameState::Loading), (
                 setup_simulations,
                 setup_viewports,
                 setup_lighting,
-                finished_loading).chain()
+            ))
+            .add_systems(Update,
+                         initialize_gpu_data.run_if(in_state(GameState::Loading))
             )
             .add_systems(Update, (
                 update_particle_simulation,
