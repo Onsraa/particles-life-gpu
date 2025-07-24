@@ -7,23 +7,22 @@ pub struct ParticleConfig {
     pub world_size: f32,
     pub num_types: u32,
     pub particle_size: f32,
-    pub force_matrix: Vec<f32>, // Matrice des forces entre types (format linéaire)
+    pub force_matrix: Vec<f32>,
     pub update_timer: Timer,
 }
 
 impl Default for ParticleConfig {
     fn default() -> Self {
-        let num_types = 4u32;
+        let num_types = 6u32;
         let mut config = Self {
-            num_particles: 1000,
+            num_particles: 1600, // 8 simulations * 200 particules
             world_size: 50.0,
             num_types,
             particle_size: 0.3,
             force_matrix: vec![0.0; (num_types * num_types) as usize],
-            update_timer: Timer::from_seconds(1.0 / 120.0, TimerMode::Repeating), // 60 FPS
+            update_timer: Timer::from_seconds(1.0 / 60.0, TimerMode::Repeating),
         };
 
-        // Génère une matrice de forces aléatoires
         config.generate_random_forces();
         config
     }
