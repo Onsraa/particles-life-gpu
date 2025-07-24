@@ -44,11 +44,11 @@ pub fn main_menu_ui(
     mut menu_config: ResMut<MenuConfig>,
     mut next_state: ResMut<NextState<AppState>>,
     mut commands: Commands,
-) -> Result {
+) {
 
-    info!("MainMenu ui");
+    println!("MainMenu ui");
 
-    let ctx = contexts.ctx_mut()?;
+    let ctx = contexts.ctx_mut();
 
     egui::CentralPanel::default().show(ctx, |ui| {
         ui.vertical_centered(|ui| {
@@ -231,7 +231,6 @@ pub fn main_menu_ui(
             ui.add_space(20.0);
         });
     });
-    Ok(())
 }
 
 fn apply_configuration(commands: &mut Commands, config: &MenuConfig) {

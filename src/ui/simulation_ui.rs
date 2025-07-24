@@ -33,12 +33,12 @@ pub fn simulations_list_ui(
     mut contexts: EguiContexts,
     mut ui_state: ResMut<SimulationUI>,
     simulations: Query<&Simulation>,
-) -> Result {
-    let ctx = contexts.ctx_mut()?;
+) {
+    let ctx = contexts.ctx_mut();
 
     if !ui_state.show_simulations_list {
         ui_state.right_panel_width = 0.0;
-        return Ok(());
+        return
     }
 
     let panel_width = 350.0;
@@ -144,7 +144,6 @@ pub fn simulations_list_ui(
         });
 
     ui_state.right_panel_width = panel_width;
-    Ok(())
 }
 
 pub fn force_matrix_window(
@@ -152,12 +151,12 @@ pub fn force_matrix_window(
     mut ui_state: ResMut<SimulationUI>,
     config: Res<ParticleConfig>,
     simulations: Query<&Simulation>,
-) -> Result {
+) {
     if !ui_state.show_matrix_window || ui_state.selected_simulation.is_none() {
-        return Ok(())
+        return
     }
 
-    let ctx = contexts.ctx_mut()?;
+    let ctx = contexts.ctx_mut();
     let selected_sim = ui_state.selected_simulation.unwrap();
 
     egui::Window::new(format!("🔬 Matrice des Forces - Simulation #{}", selected_sim + 1))
@@ -246,7 +245,6 @@ pub fn force_matrix_window(
                 });
             }
         });
-    Ok(())
 }
 
 // Fonction helper pour obtenir la couleur d'un type

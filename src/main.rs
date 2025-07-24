@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy_app_compute::prelude::*;
-use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
+use bevy_egui::{EguiContextPass, EguiPlugin};
 
 mod components;
 mod globals;
@@ -21,13 +21,13 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_plugins(AppComputePlugin)
-        .add_plugins(EguiPlugin::default())
+        .add_plugins(EguiPlugin { enable_multipass_for_primary_context: true })
         .init_state::<AppState>()
         .init_resource::<MenuConfig>()
         .init_resource::<SimulationUI>()
         .add_plugins(ParticleLifePlugin)
         .add_systems(
-            EguiPrimaryContextPass,
+            EguiContextPass,
             (main_menu_ui, simulations_list_ui).run_if(in_state(AppState::MainMenu)),
         )
         .add_systems(
@@ -39,6 +39,7 @@ fn main() {
             )
                 .run_if(in_state(AppState::Simulation)),),
         )
+        .add_systems(Update, check_state)
         .run();
 }
 
@@ -48,5 +49,14 @@ fn handle_simulation_input(
 ) {
     if keyboard.just_pressed(KeyCode::Escape) {
         next_state.set(AppState::MainMenu);
+    }
+}
+
+fn check_state(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    state: Res<State<AppState>>,
+) {
+    if keyboard.just_pressed(KeyCode::Space) {
+        info!("State: {:?}", state);
     }
 }

@@ -16,7 +16,7 @@ pub fn setup_viewports(
     windows: Query<&Window>,
 ) {
     let window = windows.single();
-    
+
     let (window_width, window_height) = {
         let window = window.unwrap();
         (window.width(), window.height())
