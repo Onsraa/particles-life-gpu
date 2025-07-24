@@ -17,11 +17,13 @@ impl Plugin for ParticleLifePlugin {
             .init_resource::<SimulationConfig>()
             .init_resource::<ParticleTypes>()
             .add_plugins(AppComputeWorkerPlugin::<ParticleComputeWorker>::default())
-            .add_systems(OnEnter(GameState::Loading), (
+            .add_systems(OnEnter(GameState::Loading),
+                (initialize_gpu_data,
                 setup_simulations,
                 setup_viewports,
                 setup_lighting,
-            ))
+                finished_loading).chain()
+            )
             .add_systems(Update, (
                 update_particle_simulation,
                 update_particle_visualization.after(update_particle_simulation),
@@ -29,8 +31,7 @@ impl Plugin for ParticleLifePlugin {
                 display_scores,
                 update_viewports_on_resize,
                 handle_input,
-            ).run_if(in_state(GameState::Running)))
-            .add_systems(OnExit(GameState::Loading), transition_to_running);
+            ).run_if(in_state(GameState::Running)));
     }
 }
 
@@ -93,11 +94,13 @@ fn update_particle_simulation(
     }
 
     if !compute_worker.ready() {
+        println!("⚠️ Compute worker not ready!");
         return;
     }
 
-    // Juste exécuter - les swaps sont automatiques
+    println!("🚀 Executing compute shader...");
     compute_worker.execute();
+    println!("✅ Compute shader executed");
 }
 
 fn update_particle_visualization(
@@ -108,13 +111,23 @@ fn update_particle_visualization(
         return;
     }
 
-    // Lire depuis "new_positions" (destination après swap)
-    let positions: Vec<[f32; 4]> = compute_worker.read_vec("new_positions");
+    let positions: Vec<[f32; 4]> = compute_worker.read_vec("positions");
 
+    println!("📖 Reading {} positions from GPU", positions.len());
+
+    let mut updated_count = 0;
     for (particle, mut transform) in query.iter_mut() {
         if let Some(pos) = positions.get(particle.index as usize) {
-            transform.translation = Vec3::new(pos[0], pos[1], pos[2]);
+            let new_pos = Vec3::new(pos[0], pos[1], pos[2]);
+            if transform.translation.distance(new_pos) > 0.01 {
+                updated_count += 1;
+            }
+            transform.translation = new_pos;
         }
+    }
+
+    if updated_count > 0 {
+        println!("🔄 Updated {} particle positions", updated_count);
     }
 }
 
@@ -133,10 +146,6 @@ fn setup_lighting(mut commands: Commands) {
         brightness: 300.0,
         affects_lightmapped_meshes: false,
     });
-}
-
-fn transition_to_running(mut next_state: ResMut<NextState<GameState>>) {
-    next_state.set(GameState::Running);
 }
 
 fn handle_input(

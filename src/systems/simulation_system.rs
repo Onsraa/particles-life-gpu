@@ -6,12 +6,42 @@ use rand::Rng;
 use crate::components::{particle::*, food::*, simulation::*};
 use crate::plugins::particle_life_plugin::ParticleComputeWorker;
 use crate::resources::{particle_config::*, simulation_config::*};
+use crate::states::game_state::GameState;
+
+pub fn initialize_gpu_data(
+    mut compute_worker: ResMut<AppComputeWorker<ParticleComputeWorker>>,
+    particles: Query<(&Transform, &LifeParticle)>,
+    mut initialized: Local<bool>,
+) {
+    if *initialized || !compute_worker.ready() {
+        return;
+    }
+
+    let mut positions = Vec::new();
+    let mut velocities = Vec::new();
+
+    // Collecter positions des entités spawned
+    for (transform, particle) in particles.iter() {
+        let pos = transform.translation;
+        positions.push([pos.x, pos.y, pos.z, particle.particle_type as f32]);
+        velocities.push([0.0, 0.0, 0.0, 0.0]);
+    }
+
+    println!("💾 Initializing GPU with {} particles", positions.len());
+
+    compute_worker.write_slice("positions", &positions);
+    compute_worker.write_slice("velocities", &velocities);
+    compute_worker.write_slice("new_positions", &positions);
+    compute_worker.write_slice("new_velocities", &velocities);
+
+    *initialized = true;
+    println!("✅ GPU data initialized");
+}
 
 pub fn setup_simulations(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut compute_worker: ResMut<AppComputeWorker<ParticleComputeWorker>>,
     sim_config: Res<SimulationConfig>,
     particle_config: Res<ParticleConfig>,
     particle_types: Res<ParticleTypes>,
@@ -37,14 +67,6 @@ pub fn setup_simulations(
         all_velocities.push([vx, vy, vz, 0.0]);
 
         global_particle_index += 1;
-    }
-
-    // Envoyer au GPU
-    if compute_worker.ready() {
-        compute_worker.write_slice("positions", &all_positions);
-        compute_worker.write_slice("velocities", &all_velocities);
-        compute_worker.write_slice("new_positions", &all_positions);
-        compute_worker.write_slice("new_velocities", &all_velocities);
     }
 
     // Meshes
@@ -125,4 +147,8 @@ pub fn setup_simulations(
     }
 
     println!("Setup {} simulations with synchronized positions", sim_config.num_simulations);
+}
+
+pub fn finished_loading(mut next_state: ResMut<NextState<GameState>>) {
+    next_state.set(GameState::Running);
 }
